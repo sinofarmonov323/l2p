@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "httpx",
     "jinja2>=3.1.6",
+    "pyinstaller>=6.21.0",
 ]
 
 [project.scripts]
