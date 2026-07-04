@@ -13,4 +13,4 @@ dependencies = [
 ]
 
 [project.scripts]
-ltp = "ltp.cli:main"
+ltp = "local2public.cli:main"
