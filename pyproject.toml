@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "local2public"
+version = "0.1.0"
+description = "Local to public tunnel. Github: https://github.com/sinofarmonov323/l2p"
+
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+]
+
+[project.scripts]
+ltp = "ltp.cli:main"
