@@ -31,7 +31,7 @@ async def respond(request_id: str, request: Request):
         pending_requests[request_id]["future"].set_result(data)
     return JSONResponse({"ok": True})
 
-@app.api_route("/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/join/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(name: str, path: str, request: Request):
     request_id = str(uuid.uuid4())
     loop = asyncio.get_event_loop()
