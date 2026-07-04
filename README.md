@@ -1,5 +1,11 @@
 # l2p - Local to Public
 
+## Installation
 ```
-python cli.py --port [port_number] --name [your_website_name]
+pip install local2public
+```
+
+
+```
+ltp --port [port_number] --name [your_website_name]
 ```
