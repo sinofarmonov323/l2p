@@ -12,7 +12,7 @@ def parse_args():
     return parser.parse_args()
 
 async def tunnel(local_port: int, name: str, verbose: bool):
-    print(f"Tunnel open: {SERVER_URL}/{name}/")
+    print(f"Tunnel open: {SERVER_URL}/join/{name}/")
     print("Ctrl+C to stop")
 
     async with httpx.AsyncClient() as client:
