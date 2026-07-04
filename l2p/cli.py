@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import asyncio
 import httpx
 
-SERVER_URL = "https://l2p-beige.vercel.app/"  # change to your deployed server
+SERVER_URL = "https://l2p-beige.vercel.app"  # change to your deployed server
 
 def parse_args():
     parser = ArgumentParser(description="ltp - local to public")
