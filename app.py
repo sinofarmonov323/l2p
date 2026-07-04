@@ -1,54 +1,85 @@
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
 import asyncio
 import uuid
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect, Request, FastAPI
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+app = FastAPI()
+template = Jinja2Templates(directory="templates")
+
+# stores active tunnels: name -> websocket
+tunnels: dict[str, WebSocket] = {}
+
+# stores pending requests: request_id -> Future
+pending: dict[str, asyncio.Future] = {}
+
+@app.get("/")
+async def homepage(request: Request):
+    return template.TemplateResponse(request, "index.html")
+
+@app.websocket("/tunnel")
+async def tunnel_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    # wait for register message
+    data = await websocket.receive_json()
+    port = data["port"]
+
+    # assign a unique name
+    name = data['name']
+    tunnels[name] = websocket
+    print(f"Client registered: {name} -> localhost:{port}")
+
+    await websocket.send_json({"name": name})
+    print(f"Tunnel open at /join/{name}")
+
+    try:
+        while True:
+            # receive response from CLI client
+            response = await websocket.receive_json()
+            request_id = response["request_id"]
+
+            # resolve the pending request
+            if request_id in pending:
+                pending[request_id].set_result(response)
+
+    except WebSocketDisconnect:
+        tunnels.pop(name, None)
+        print(f"Tunnel closed: {name}")
 
 
-app = FastAPI(
-    title="Local To Public",
-    docs_url='/',
-    redoc_url='/docs',
-)
-
-import asyncio
-import uuid
-
-pending_requests = {}  # request_id -> {"request": ..., "future": ...}
-    
-@app.get("/poll/{name}")
-async def poll(name: str):
-    requests = {
-        rid: {"method": r["method"], "path": r["path"], "body": r["body"]}
-        for rid, r in pending_requests.items()
-    }
-    return JSONResponse(requests)
-
-@app.post("/respond/{request_id}")
-async def respond(request_id: str, request: Request):
-    data = await request.json()
-    if request_id in pending_requests:
-        pending_requests[request_id]["future"].set_result(data)
-    return JSONResponse({"ok": True})
-
-@app.api_route("/join/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/join/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy(name: str, path: str, request: Request):
-    request_id = str(uuid.uuid4())
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
+    if name not in tunnels:
+        return JSONResponse({"error": "tunnel not found"}, status_code=404)
 
-    pending_requests[request_id] = {
+    ws = tunnels[name]
+    request_id = str(uuid.uuid4())
+
+    # read request body
+    body = (await request.body()).decode("utf-8", errors="ignore")
+
+    # forward request to CLI client
+    await ws.send_json({
+        "request_id": request_id,
         "method": request.method,
         "path": f"/{path}",
-        "body": (await request.body()).decode(),
-        "future": future,
-    }
+        "headers": dict(request.headers),
+        "body": body,
+    })
 
-    # wait for CLI to respond
+    # wait for CLI client to respond
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+    pending[request_id] = future
+
     try:
         response = await asyncio.wait_for(future, timeout=30)
-        return Response(content=response["body"], status_code=response["status"])
+        pending.pop(request_id, None)
+        return HTMLResponse(
+            content=response.get("body"),
+            status_code=response.get("status", 200),
+        )
     except asyncio.TimeoutError:
-        return JSONResponse({"error": "timeout"}, status_code=504)
-    finally:
-        pending_requests.pop(request_id, None)
+        pending.pop(request_id, None)
+        return JSONResponse({"error": "tunnel timeout"}, status_code=504)
