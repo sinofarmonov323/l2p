@@ -1,1 +1,1 @@
-# l2p - a small, free alternative to ngrok, and jprq
+# l2p - Local to Public
