@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect, Request, FastAPI
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -6,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 app = FastAPI()
 template = Jinja2Templates(directory="templates")
+BASE_DOMAIN = os.getenv("LTP_BASE_DOMAIN", "localhost").strip().lower().rstrip(".")
 
 # stores active tunnels: name -> websocket
 tunnels: dict[str, WebSocket] = {}
@@ -13,43 +15,23 @@ tunnels: dict[str, WebSocket] = {}
 # stores pending requests: request_id -> Future
 pending: dict[str, asyncio.Future] = {}
 
-@app.get("/")
-async def homepage(request: Request):
-    return template.TemplateResponse(request, "index.html")
 
-@app.websocket("/tunnel")
-async def tunnel_endpoint(websocket: WebSocket):
-    await websocket.accept()
+def tunnel_name_from_host(host: str | None) -> str | None:
+    if not host or not BASE_DOMAIN:
+        return None
 
-    # wait for register message
-    data = await websocket.receive_json()
-    port = data["port"]
+    hostname = host.split(":", 1)[0].lower().rstrip(".")
+    suffix = f".{BASE_DOMAIN}"
+    if hostname == BASE_DOMAIN or not hostname.endswith(suffix):
+        return None
 
-    # assign a unique name
-    name = data['name']
-    tunnels[name] = websocket
-    print(f"Client registered: {name} -> localhost:{port}")
-
-    await websocket.send_json({"name": name})
-    print(f"Tunnel open at /join/{name}")
-
-    try:
-        while True:
-            # receive response from CLI client
-            response = await websocket.receive_json()
-            request_id = response["request_id"]
-
-            # resolve the pending request
-            if request_id in pending:
-                pending[request_id].set_result(response)
-
-    except WebSocketDisconnect:
-        tunnels.pop(name, None)
-        print(f"Tunnel closed: {name}")
+    name = hostname[:-len(suffix)]
+    if not name or "." in name:
+        return None
+    return name
 
 
-@app.api_route("/join/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def proxy(name: str, path: str, request: Request):
+async def proxy_to_tunnel(name: str, path: str, request: Request):
     if name not in tunnels:
         return JSONResponse({"error": "tunnel not found"}, status_code=404)
 
@@ -83,3 +65,59 @@ async def proxy(name: str, path: str, request: Request):
     except asyncio.TimeoutError:
         pending.pop(request_id, None)
         return JSONResponse({"error": "tunnel timeout"}, status_code=504)
+
+
+@app.get("/")
+async def homepage(request: Request):
+    name = tunnel_name_from_host(request.headers.get("host"))
+    if name:
+        return await proxy_to_tunnel(name, "", request)
+
+    return template.TemplateResponse(request, "index.html")
+
+@app.websocket("/tunnel")
+async def tunnel_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    # wait for register message
+    data = await websocket.receive_json()
+    port = data["port"]
+
+    # assign a unique name
+    name = data['name']
+    tunnels[name] = websocket
+    print(f"Client registered: {name} -> localhost:{port}")
+
+    await websocket.send_json({"name": name})
+    if BASE_DOMAIN:
+        print(f"Tunnel open at https://{name}.{BASE_DOMAIN}/")
+    else:
+        print(f"Tunnel open at /join/{name}")
+
+    try:
+        while True:
+            # receive response from CLI client
+            response = await websocket.receive_json()
+            request_id = response["request_id"]
+
+            # resolve the pending request
+            if request_id in pending:
+                pending[request_id].set_result(response)
+
+    except WebSocketDisconnect:
+        tunnels.pop(name, None)
+        print(f"Tunnel closed: {name}")
+
+
+@app.api_route("/join/{name}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy(name: str, path: str, request: Request):
+    return await proxy_to_tunnel(name, path, request)
+
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def subdomain_proxy(path: str, request: Request):
+    name = tunnel_name_from_host(request.headers.get("host"))
+    if not name:
+        return JSONResponse({"error": "tunnel not found"}, status_code=404)
+
+    return await proxy_to_tunnel(name, path, request)

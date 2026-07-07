@@ -3,8 +3,11 @@ import asyncio
 import httpx
 import websockets
 import json
+import os
+from urllib.parse import urlparse, urlunparse
 
-SERVER_URL = "ws://localhost:8000/tunnel"
+SERVER_URL = os.getenv("LTP_SERVER_URL", "ws://localhost:8000/tunnel")
+PUBLIC_BASE_URL = os.getenv("LTP_PUBLIC_BASE_URL")
 
 def parse_args():
     parser = ArgumentParser(description="ltp - local to public")
@@ -12,6 +15,19 @@ def parse_args():
     parser.add_argument("-n", "--name", type=str, required=True, help="Public tunnel name")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     return parser.parse_args()
+
+
+def public_url_for_name(name: str) -> str:
+    base_url = PUBLIC_BASE_URL
+    if not base_url:
+        parsed_server = urlparse(SERVER_URL)
+        scheme = "https" if parsed_server.scheme == "wss" else "http"
+        base_url = urlunparse((scheme, parsed_server.netloc, "", "", "", ""))
+
+    parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}")
+    netloc = f"{name}.{parsed.netloc}"
+    return urlunparse((parsed.scheme, netloc, "/", "", "", ""))
+
 
 async def tunnel(local_port: int, name: str, verbose: bool):
     async with websockets.connect(SERVER_URL) as ws:
@@ -22,7 +38,7 @@ async def tunnel(local_port: int, name: str, verbose: bool):
             print(f"Error: {response['error']}")
             return
 
-        print(f"Tunnel open: http://localhost:8000/join/{name}/")
+        print(f"Tunnel open: {public_url_for_name(name)}")
         print("Ctrl+C to stop")
 
         async with httpx.AsyncClient() as client:

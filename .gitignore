@@ -11,4 +11,5 @@ wheels/
 uv.lock
 ltp.spec
 build/
-local2public
+local2public\
+.agents
