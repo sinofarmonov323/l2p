@@ -9,9 +9,12 @@ description = "Local to public tunnel. Github: https://github.com/sinofarmonov32
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi",
     "httpx",
     "jinja2>=3.1.6",
     "pyinstaller>=6.21.0",
+    "uvicorn[standard]",
+    "websockets",
 ]
 
 [project.scripts]

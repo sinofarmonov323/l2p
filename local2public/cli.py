@@ -1,13 +1,28 @@
 from argparse import ArgumentParser
 import asyncio
-import httpx
-import websockets
+import base64
 import json
 import os
+import re
 from urllib.parse import urlparse, urlunparse
+
+import httpx
+import websockets
 
 SERVER_URL = os.getenv("LTP_SERVER_URL", "ws://localhost:8000/tunnel")
 PUBLIC_BASE_URL = os.getenv("LTP_PUBLIC_BASE_URL")
+NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
+
 
 def parse_args():
     parser = ArgumentParser(description="ltp - local to public")
@@ -15,6 +30,23 @@ def parse_args():
     parser.add_argument("-n", "--name", type=str, required=True, help="Public tunnel name")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     return parser.parse_args()
+
+
+def normalize_tunnel_name(name: str) -> str:
+    normalized = name.strip().lower()
+    if not NAME_RE.fullmatch(normalized):
+        raise ValueError(
+            "name must be a valid DNS label: lowercase letters, numbers, and hyphens only"
+        )
+    return normalized
+
+
+def filtered_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in HOP_BY_HOP_HEADERS
+    }
 
 
 def public_url_for_name(name: str) -> str:
@@ -30,6 +62,8 @@ def public_url_for_name(name: str) -> str:
 
 
 async def tunnel(local_port: int, name: str, verbose: bool):
+    name = normalize_tunnel_name(name)
+
     async with websockets.connect(SERVER_URL) as ws:
         await ws.send(json.dumps({"type": "register", "port": local_port, "name": name}))
 
@@ -46,36 +80,53 @@ async def tunnel(local_port: int, name: str, verbose: bool):
                 message = json.loads(await ws.recv())
 
                 if verbose:
-                    print(f"→ {message['method']} {message['path']}")
+                    print(f"-> {message['method']} {message['path']}")
 
                 try:
+                    path = message["path"]
+                    if message.get("query_string"):
+                        path = f"{path}?{message['query_string']}"
+
+                    body = message.get("body", "")
+                    if message.get("body_encoding") == "base64":
+                        content = base64.b64decode(body)
+                    else:
+                        content = body.encode("utf-8")
+
                     resp = await client.request(
                         method=message["method"],
-                        url=f"http://localhost:{local_port}{message['path']}",
-                        headers=message.get("headers", {}),
-                        content=message.get("body", b""),
+                        url=f"http://localhost:{local_port}{path}",
+                        headers=filtered_headers(message.get("headers", {})),
+                        content=content,
                     )
                     await ws.send(json.dumps({
                         "type": "response",
                         "request_id": message["request_id"],
                         "status": resp.status_code,
-                        "headers": dict(resp.headers),
-                        "body": resp.text,
+                        "headers": filtered_headers(dict(resp.headers)),
+                        "body": base64.b64encode(resp.content).decode("ascii"),
+                        "body_encoding": "base64",
                     }))
                 except Exception as e:
                     await ws.send(json.dumps({
                         "type": "response",
                         "request_id": message["request_id"],
                         "status": 502,
-                        "body": str(e),
+                        "headers": {"content-type": "text/plain; charset=utf-8"},
+                        "body": base64.b64encode(str(e).encode("utf-8")).decode("ascii"),
+                        "body_encoding": "base64",
                     }))
+
 
 def main():
     args = parse_args()
     try:
         asyncio.run(tunnel(args.port, args.name, args.verbose))
+    except ValueError as e:
+        print(f"Error: {e}")
     except KeyboardInterrupt:
         print("\nTunnel closed")
+
 
 if __name__ == "__main__":
     main()
