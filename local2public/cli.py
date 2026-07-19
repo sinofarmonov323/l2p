@@ -9,7 +9,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 import websockets
 
-SERVER_URL = os.getenv("LTP_SERVER_URL", "ws://localhost:8000/tunnel")
+SERVER_URL = os.getenv("LTP_SERVER_URL", "wss://techmentor.uz/tunnel")
 PUBLIC_BASE_URL = os.getenv("LTP_PUBLIC_BASE_URL")
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 HOP_BY_HOP_HEADERS = {
@@ -95,7 +95,7 @@ async def tunnel(local_port: int, name: str, verbose: bool):
 
                     resp = await client.request(
                         method=message["method"],
-                        url=f"http://localhost:{local_port}{path}",
+                        url=f"http://127.0.0.1:{local_port}{path}",
                         headers=filtered_headers(message.get("headers", {})),
                         content=content,
                     )

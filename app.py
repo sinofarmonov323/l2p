@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 ENABLE_DOCS = os.getenv("LTP_ENABLE_DOCS", "").lower() in {"1", "true", "yes"}
-BASE_DOMAIN = os.getenv("LTP_BASE_DOMAIN", "localhost").strip().lower().rstrip(".")
+BASE_DOMAIN = os.getenv("LTP_BASE_DOMAIN", "techmentor.uz").strip().lower().rstrip(".")
 REQUEST_TIMEOUT = float(os.getenv("LTP_REQUEST_TIMEOUT", "30"))
 MAX_BODY_BYTES = int(os.getenv("LTP_MAX_BODY_BYTES", str(10 * 1024 * 1024)))
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -149,7 +149,7 @@ async def tunnel_endpoint(websocket: WebSocket):
         return
 
     tunnels[name] = websocket
-    print(f"Client registered: {name} -> localhost:{port}")
+    print(f"Client registered: {name} -> http://127.0.0.1:{port}")
 
     await websocket.send_json({"name": name})
     if BASE_DOMAIN:
