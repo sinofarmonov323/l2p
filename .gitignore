@@ -7,8 +7,7 @@ wheels/
 *.egg-info
 
 # Virtual environments
-.venv
-uv.lock
+venv
 ltp.spec
 build/
 local2public\

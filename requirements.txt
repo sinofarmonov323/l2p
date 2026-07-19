@@ -1,3 +1,5 @@
 fastapi
 websockets
 uvicorn
+jinja2
+httpx
