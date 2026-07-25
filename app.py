@@ -6,6 +6,7 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect, Request, FastAPI
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from 
 
 ENABLE_DOCS = os.getenv("LTP_ENABLE_DOCS", "").lower() in {"1", "true", "yes"}
 BASE_DOMAIN = os.getenv("LTP_BASE_DOMAIN", "techmentor.uz").strip().lower().rstrip(".")
@@ -184,3 +185,12 @@ async def subdomain_proxy(path: str, request: Request):
         return JSONResponse({"error": "tunnel not found"}, status_code=404)
 
     return await proxy_to_tunnel(name, path, request)
+
+VALID_SUBDOMAINS = {"api", "service"}
+
+@app.get("/internal/check-subdomain")
+async def check_subdomain(domain: str):
+    name = domain.removesuffix(".techmentor.uz")
+    if name not in VALID_SUBDOMAINS:
+        return Response(status_code=200)
+    return Response(status_code=404)
