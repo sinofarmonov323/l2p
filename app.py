@@ -6,7 +6,6 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect, Request, FastAPI
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
-from 
 
 ENABLE_DOCS = os.getenv("LTP_ENABLE_DOCS", "").lower() in {"1", "true", "yes"}
 BASE_DOMAIN = os.getenv("LTP_BASE_DOMAIN", "techmentor.uz").strip().lower().rstrip(".")
